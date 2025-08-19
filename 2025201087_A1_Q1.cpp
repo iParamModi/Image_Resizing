@@ -3,7 +3,7 @@
 using namespace std;
 using namespace cv;
 
-void calculateEnergy_row(const Mat &image, Mat &energy, long long rows, long long cols)
+void calculateEnergy(const Mat &image, Mat &energy, long long rows, long long cols)
 {
     for (long long i = 0; i < image.rows; i++)
     {
@@ -49,7 +49,7 @@ void calculateEnergy_row(const Mat &image, Mat &energy, long long rows, long lon
     }
 }
 
-vector<pair<long long, long long>> seamCalculation_row(Mat &dp, long long row, long long col)
+vector<pair<long long, long long>> seamCalculation_col(Mat &dp, long long row, long long col)
 {
     for (long long i = 1; i < row; i++)
     {
@@ -104,7 +104,7 @@ vector<pair<long long, long long>> seamCalculation_row(Mat &dp, long long row, l
     return seamPoint;
 }
 
-void imageUpdate_row(Mat &image, Mat &dp, long long row, long long col, vector<pair<long long, long long>> &seamPoint)
+void imageUpdate_col(Mat &image, Mat &dp, long long row, long long col, vector<pair<long long, long long>> &seamPoint)
 {
     Mat temp = image.clone();
 
@@ -129,6 +129,88 @@ void imageUpdate_row(Mat &image, Mat &dp, long long row, long long col, vector<p
     }
     image = image.colRange(0, col - 1).clone();
 }
+
+vector<pair<long long, long long>> seamCalculation_row(Mat &dp, long long row, long long col)
+{
+    for (long long j = 1; j < col; j++)
+    {
+        for (long long i = 0;i < row; i++)
+        {
+            long long A = (i - 1 < 0) ? LLONG_MAX : dp.at<double>(i - 1, j - 1);
+            long long B = dp.at<double>(i, j-1);
+            long long C = (i + 1 >= row) ? LLONG_MAX : dp.at<double>(i + 1, j - 1);
+
+            dp.at<double>(i, j) = dp.at<double>(i, j) + min(A, min(B, C));
+        }
+    }
+
+    long long minCol = col - 1;
+    long long minRow = 0;
+
+    for (long long i = 1; i < row; i++)
+    {
+        if (dp.at<double>(i, col - 1) < dp.at<double>(minRow, minCol))
+        {
+            minRow = i;
+        }
+    }
+
+    vector<pair<long long, long long>> seamPoint;
+
+    while (minCol > 0)
+    {
+        seamPoint.push_back({minRow, minCol});
+
+        long long A = (minRow - 1 < 0) ? LLONG_MAX : dp.at<double>(minRow - 1, minCol - 1);
+        long long B = dp.at<double>(minRow, minCol-1);
+        long long C = (minRow + 1 >= row) ? LLONG_MAX : dp.at<double>(minRow + 1, minCol - 1);
+
+        minCol--;
+
+        long long minVal = min(A, min(B, C));
+
+        if (A == minVal)
+        {
+
+            minRow--;
+        }
+        else if (C == minVal)
+        {
+            minRow++;
+        }
+    }
+    seamPoint.push_back({minRow, minCol});
+    reverse(seamPoint.begin(), seamPoint.end());
+
+    return seamPoint;
+}
+
+void imageUpdate_row(Mat &image, Mat &dp, long long row, long long col, vector<pair<long long, long long>> &seamPoint)
+{
+    Mat temp = image.clone();
+
+    for (auto pt : seamPoint)
+    {
+        long long i = pt.first;
+        long long j = pt.second;
+
+        temp.at<Vec3b>(i, j) = Vec3b(0, 0, 255);
+    }
+    imshow("Display Image", temp);
+    waitKey(50);
+
+    for (long long i = 0; i < col; i++)
+    {
+        int seamRow = seamPoint[i].first;
+
+        for (long long j = seamRow; j < row - 1; j++)
+        {
+            image.at<Vec3b>((int)j, (int)i) = image.at<Vec3b>((int)(j+1), (int)i);
+        }
+    }
+    image = image.rowRange(0, row - 1).clone();
+}
+
 
 int main(int argc, char **argv)
 {
@@ -169,32 +251,32 @@ int main(int argc, char **argv)
     while (col > desiredCol)
     {
         Mat energy(row, col, CV_64F, Scalar(0));    
-        calculateEnergy_row(image, energy, row, col);
+        calculateEnergy(image, energy, row, col);
 
         Mat dp = energy.clone();
-        vector<pair<long long, long long>> seamPoint = seamCalculation_row(dp, row, col);
+        vector<pair<long long, long long>> seamPoint = seamCalculation_col(dp, row, col);
 
-        imageUpdate_row(image, dp, row, col, seamPoint);
+        imageUpdate_col(image, dp, row, col, seamPoint);
         col = (long long)image.cols;
 
         imshow("Display Image", image);
         waitKey(80);
     }
 
-    // while (row > desiredRow)
-    // {
-    //     Mat energy(row, col, CV_64F, Scalar(0));    
-    //     calculateEnergy(image, energy, row, col);
+    while (row > desiredRow)
+    {
+        Mat energy(row, col, CV_64F, Scalar(0));    
+        calculateEnergy(image, energy, row, col);
 
-    //     Mat dp = energy.clone();
-    //     vector<pair<long long, long long>> seamPoint = seamCalculation(dp, row, col);
+        Mat dp = energy.clone();
+        vector<pair<long long, long long>> seamPoint = seamCalculation_row(dp, row, col);
 
-    //     imageUpdate(image, dp, row, col, seamPoint);
-    //     row = (long long)image.row;
+        imageUpdate_row(image, dp, row, col, seamPoint);
+        row = (long long)image.rows;
 
-    //     imshow("Display Image", image);
-    //     waitKey(80);
-    // }
+        imshow("Display Image", image);
+        waitKey(80);
+    }
 
     imwrite("original.png", image);
     cout << "Image saved to original.png" << endl;
